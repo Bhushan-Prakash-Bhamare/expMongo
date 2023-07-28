@@ -5,7 +5,7 @@ const router = express.Router();
   
 router.post('/forgotpassword',passwordController.passwordresetmail); 
 
-router.get('/resetpassword/:uId',passwordController.passwordreset);
+router.get('/resetpassword',passwordController.passwordreset);
 
 router.post('/change',passwordController.passwordupdate);
 

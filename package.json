@@ -10,7 +10,7 @@
   "author": "Bhushan Bhamare",
   "license": "ISC",
   "dependencies": {
-    "aws-sdk": "^2.1409.0", 
+    "aws-sdk": "^2.1409.0",
     "axios": "^1.4.0",
     "bcrypt": "^5.0.1",
     "body-parser": "^1.20.2",
@@ -19,6 +19,8 @@
     "express": "^4.18.2",
     "helmet": "^7.0.0",
     "jsonwebtoken": "^9.0.0",
+    "mongodb": "^5.7.0",
+    "mongoose": "^7.4.1",
     "morgan": "^1.10.0",
     "mysql2": "^3.4.0",
     "razorpay": "^2.8.6",

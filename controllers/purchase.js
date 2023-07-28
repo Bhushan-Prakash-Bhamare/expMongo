@@ -1,5 +1,5 @@
 const Razorpay=require('razorpay')
-const order=require('../models/order');
+const userModel=require('../models/user');
 const jwt=require('jsonwebtoken');
 require('dotenv').config();
 
@@ -21,8 +21,12 @@ exports.purchasepremium=async(req,res,next)=>{
                 {
                     throw new Error(JSON.stringify(err));
                 }
-                await req.user.createOrder({orderid:order.id,status:'PENDING'}) 
-
+                const user=await userModel.findById(req.user._id);
+                user.order.push({
+                    orderid:order.id,
+                    status:'PENDING'
+                });
+                await user.save();
                 return res.status(201).json({order,key_id:rzp.key_id});
             }
             catch(err){
@@ -39,18 +43,28 @@ exports.updateTransactionStatus=async(req,res,next)=>{
         try{
                 if(req.body.payment_id==null){
                     const {order_id}=req.body;
-                    const data= await order.findOne({where:{orderid:order_id}});
-                    await data.update({status:'FAILED'});
+                    const user=await req.user.populate('order');
+                    const orderIndex = user.order.findIndex(cp => {
+                        return cp.orderid.toString() === order_id.toString();
+                      });
+                    user.order[orderIndex].status='FAILED';
+                    await user.save();
+                    
                     return res.status(202).json({success:false,message:"Transaction unsuccessfull"});
                 }
-                const userId=req.user.id;
+                const userId=req.user._id;
+                const name=req.user.name
                 const {payment_id,order_id}=req.body;
-                const data= await order.findOne({where:{orderid:order_id}});
-                const p1= await data.update({paymentid:payment_id,status:'SUCCESSFULL'});
-                const p2=await req.user.update({ispremiumuser:true});
+                const user=await req.user.populate('order');
+                const orderIndex = user.order.findIndex(cp => {
+                    return cp.orderid.toString() === order_id.toString();
+                  });
+                user.order[orderIndex].status='SUCCESSFULL';
+                user.order[orderIndex].paymentid=payment_id;
+                user.ispremiumuser=true;
+                await user.save();
 
-                await Promise.all([p1,p2])
-                return res.status(202).json({success:true,message:"Transaction successfull",token:generateAcToken(userId,undefined,true)});
+                return res.status(202).json({success:true,message:"Transaction successfull",token:generateAcToken(userId,name,true)});
         }   
         catch(err){
             console.log(err);

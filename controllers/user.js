@@ -1,11 +1,12 @@
 const userModel=require('../models/user');
-const fileModel=require('../models/fileurl');
+const expenseModel=require('../models/expense');
 const bcrypt=require('bcrypt');
 const jwt=require('jsonwebtoken');
 const AWS=require('aws-sdk');
+require('dotenv').config(); 
 
 function generateAcToken(id,name,ispremiumuser){
-    return jwt.sign({userId:id,name:name,ispremiumuser},'qR8v3cJkiPMkTyqnTpmHnjDVGHsl1kE1')
+    return jwt.sign({userId:id,name:name,ispremiumuser},process.env.TOKEN_SECRET);
 }
 
 function isstringinvalid(string){
@@ -23,11 +24,11 @@ exports.signup=async(req,res,next)=>{
         {
             return res.status(400).json({err:'Bad parameters.something is missing'});
         }
-        const allData= await userModel.findAll();
+        const allData= await userModel.find();
         allData.forEach(element => {
            if(element.email===email) 
            {
-                throw new Error('User already exists');
+                throw new Error('User already exists');   
            }
         });
         const saltrounds=10;
@@ -50,16 +51,16 @@ exports.login=async(req,res,next)=>{
         if(isstringinvalid(email)||isstringinvalid(password)){
             return res.status(400).json({err:'Bad parameters.something is missing',success:false});
         }
-        const allData= await userModel.findAll({where:{email:email}});
-        if(allData.length>0)
+        const allData= await userModel.findOne({email:email});
+        if(allData)
         {
-            bcrypt.compare(password,allData[0].password,(err,result)=>{
+            bcrypt.compare(password,allData.password,(err,result)=>{
                 if(err){
                     throw new Error('Something went wrong');
                 }
                 if(result===true)
                 {
-                    return res.status(201).json({success:true,message:'Login successfull',token:generateAcToken(allData[0].id,allData[0].name,allData[0].ispremiumuser)});
+                    return res.status(201).json({success:true,message:'Login successfull',token:generateAcToken(allData._id,allData.name,allData.ispremiumuser)});
                 }
                 else
                 {
@@ -78,7 +79,7 @@ exports.login=async(req,res,next)=>{
 
 exports.getuser=async(req,res,next)=>{
     try{
-        const data=await userModel.findByPk(req.user.id);
+        const data=await userModel.findById(req.user.id);
         res.status(201).json({userData:data,success:true});
     }
     catch(err){ 
@@ -124,12 +125,18 @@ exports.download=async(req,res,next)=>{
         {
            return res.status(401).json({success:false});
         }
-        const expenses=await req.user.getExpenses();
+        const userdetails=await expenseModel.find({ 'user.userId': req.user._id });
+        const expenses=userdetails.map((ce)=>{
+            return `Amount:${ce.amount} Description:${ce.description} Category:${ce.category}`;
+        })
         const StrExpenses=JSON.stringify(expenses);
-        const userId=req.user.id;
+        console.log(StrExpenses);
+        const userId=req.user._id;
         const filename=`Expense${userId}/${new Date()}.txt`;
         const fileURL= await uploadToS3(StrExpenses,filename);
-        await fileModel.create({url:fileURL,userId:userId});
+        const user=await userModel.findById(userId);
+        user.fileUrl.push({url:fileURL});
+        await user.save();
         res.status(200).json({fileURL,success:true});
 
     }
@@ -141,7 +148,7 @@ exports.download=async(req,res,next)=>{
 
 exports.getDownloadHistory=async(req, res, next)=>{
     try{
-        const data=await fileModel.findAll({where:{userId:req.user.id}});
+        const data=await userModel.findById(req.user);
         res.status(201).json({downloadData:data,success:true});
     }
     catch(err){ 

@@ -1,7 +1,6 @@
 const Sib=require('sib-api-v3-sdk');
 require('dotenv').config();
 const uuid=require('uuid');
-const forgetpwdModel=require('../models/forgotpwdreq');
 const userModel=require('../models/user');
 const bcrypt=require('bcrypt');
 const path=require('path');
@@ -18,10 +17,11 @@ exports.passwordresetmail=async(req, res, next)=>{
                 'email':`${req.body.email}`
             }],
             'subject':'Reset password of expense app',
-            'textContent':`password reset link: http://13.51.204.19:3100/password/resetpassword/${uId}`
+            'textContent':`password reset link: http://localhost:3000/password/resetpassword?uId=${uId}&email=${req.body.email}`
         })
-        const user=await userModel.findOne({where:{email:req.body.email}});
-        await forgetpwdModel.create({id:uId,userId:user.id});
+        const user=await userModel.findOne({email:req.body.email}); 
+        user.forgotpwd.push({uniqueId:uId,isActive:true});
+        await user.save();
         res.status(201).json({data:final,success:true});
     }
     catch(err){ 
@@ -31,12 +31,18 @@ exports.passwordresetmail=async(req, res, next)=>{
 
 exports.passwordreset=async(req, res, next)=>{
     try{
-        const uId=req.params.uId;
-        const link=await forgetpwdModel.findOne({where:{id:uId}});
-        if(link.isActive){
-            await forgetpwdModel.update({isActive:false},{where:{id:uId}});
-            res.status(200).sendFile(path.join(__dirname,'..','views','pwdreset.html') );
-        }
+        const uId=req.query.uId;
+        const email=req.query.email;
+        const user=await userModel.findOne({email:email}).populate('forgotpwd');
+        console.log(user);
+        const pwdIndex = user.forgotpwd.findIndex(cp => {
+            return cp.uniqueId.toString() === uId.toString();
+          });
+          if(user.forgotpwd[pwdIndex].isActive){
+            user.forgotpwd[pwdIndex].isActive=false;
+            await user.save();
+            res.status(200).sendFile(path.join(__dirname,'..','public','html','pwdreset.html') );
+          }
         else{
                 throw new Error('link already used');
         }
@@ -50,7 +56,7 @@ exports.passwordupdate=async(req, res, next)=>{
     try{
         const email=req.body.email;
         const pass=req.body.password;
-        const user=await userModel.findOne({where:{email:email}});
+        const user=await userModel.findOne({email:email});
         if(user)
         {
             const saltrounds=10;
@@ -59,7 +65,8 @@ exports.passwordupdate=async(req, res, next)=>{
                 console.log(err);
                 throw new Error(err);
             }
-            await userModel.update({password:hash},{where:{email:email}});
+            user.password=hash;
+            await user.save();
             res.status(201).json({message:'password updated successfully'});
         })
         }

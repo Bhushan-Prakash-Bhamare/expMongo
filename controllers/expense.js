@@ -1,7 +1,5 @@
 const expenseModel=require('../models/expense');
 const userModel=require('../models/user');
-const sequelize = require('../util/database');
-
 
 function isstringinvalid(string){
     if(string==undefined||string.length==0){
@@ -14,12 +12,8 @@ exports.getAllExpense=async(req, res, next)=>{
     try{
         const page= +req.query.page||1;
         const ITEMS_PER_PAGE= +req.query.size;
-        console.log(page,ITEMS_PER_PAGE);
-        const totalitems=await expenseModel.count({where:{userId:req.user.id}});
-        const data=await expenseModel.findAll({
-            offset:(page-1) * ITEMS_PER_PAGE,
-            limit:ITEMS_PER_PAGE,
-            where:{userId:req.user.id}});
+        const totalitems=await expenseModel.count({'user.userId':req.user._id});
+        const data=await expenseModel.find({'user.userId':req.user._id}).limit(ITEMS_PER_PAGE).skip((page-1) * ITEMS_PER_PAGE);
         res.status(201).json({
             size:ITEMS_PER_PAGE,
             expenseData:data,
@@ -38,7 +32,6 @@ exports.getAllExpense=async(req, res, next)=>{
 
 exports.postAddExpense=async(req, res, next)=>{
     try{ 
-        const t=await sequelize.transaction();
         const amount=req.body.amount;
         const desc=req.body.description;
         const category=req.body.category;
@@ -46,13 +39,13 @@ exports.postAddExpense=async(req, res, next)=>{
         {
             return res.status(400).json({err:'Bad parameters.something is missing'});
         }
-        const data= await expenseModel.create({amount:amount,description:desc,category:category,userId:req.user.id},{transaction:t});
-        await userModel.update({totalexpense:req.user.totalexpense + +amount},{where:{id:req.user.id},transaction:t});
-        await t.commit();
+        const data= await expenseModel.create({amount:amount,description:desc,category:category,user: {name: req.user.name,userId: req.user }});
+        const user=await userModel.findById(req.user._id);
+        user.totalexpense=user.totalexpense + +amount;
+        await user.save();
         res.status(201).json({newExpenseData:data,success:true,});
     }
     catch(err){ 
-        await t.rollback();
         console.log(err); 
         res.status(500).json({error:err,success:false});
     }
@@ -61,23 +54,21 @@ exports.postAddExpense=async(req, res, next)=>{
  
 exports.postDeleteExpense=async(req,res,next)=>{
     try{
-        const t=await sequelize.transaction();
+        
         const uId=req.params.id;
-        const expenseDetails=await expenseModel.findAll({where:{id:uId}});
-        const upuser=await userModel.findByPk(req.user.id);
-       if(req.user.id===expenseDetails[0].userId){
-            await userModel.update({totalexpense:upuser.totalexpense - +expenseDetails[0].amount},{where:{id:req.user.id},transaction:t});
-            await expenseModel.destroy({where:{id:uId},transaction:t});
-            t.commit();
+        const expenseDetails=await expenseModel.findById(uId);
+       if(req.user._id.toString()===expenseDetails.user.userId.toString()){
+            const user=await userModel.findById(req.user._id)
+            user.totalexpense=user.totalexpense - +expenseDetails.amount;
+            await user.save();
+            await expenseModel.findByIdAndRemove(uId); 
             res.sendStatus(200);  
        } 
        else{
             throw new Error('Access not available');
-       } 
-         
+       }   
     }
     catch(err){
-        t.rollback();
         res.status(500).json({error:err.message,success:false});
     }
 };
